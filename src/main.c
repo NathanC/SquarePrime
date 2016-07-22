@@ -17,11 +17,11 @@ The following line is an example compile:
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <Windows.h>
 #include <math.h>
 #include <pthread.h>
+#include <unistd.h>
 
-#define SQUARE(i) population[i].matrix
+#define MATRIX(i) population[i].matrix
 //Macro to easier access a square in the population
 
 typedef struct{
@@ -34,7 +34,7 @@ typedef struct{
 
     int start;
     int finish;
-    int* seed;
+    unsigned int* seed;
 
 }args;
 
@@ -59,17 +59,17 @@ int rand_gen (unsigned int *seed);
 
 int run(int generations, int survivors, int loop);
 //void keypress_waiter(void *arg);
-void print_timer(void *arg);
+void *print_timer(void *arg);
 
 void reproduce();
 void initialize();
-void initialize_protege(void *arg);
+void *initialize_protege(void *arg);
 void print_matrix(m_square square);
 void analyze();
-void analyze_protege(void *arg);
+void *analyze_protege(void *arg);
 void spawn(m_square square_a, m_square square_b);
 
-void mutate_protege(void *arg);
+void *mutate_protege(void *arg);
 void sort();
 void mutate();
 void log_file(m_square square);
@@ -96,10 +96,8 @@ int main()
     seed4 = rand();
     //initializes the various seeds for thread-safe random number generation
 
-
     int i, j;
     int outer_loop = 1;
-
 
     while(outer_loop == 1)
     {
@@ -130,7 +128,6 @@ int main()
         else
             printf("A population of %d squares created, of size %d x %d:\n", pop_size, size, size);
 
-
         w1.start= 0;
         w1.finish = pop_size/4;
         w1.seed = &seed1;
@@ -154,8 +151,11 @@ int main()
         ratio = 5;
 
         printf("\nPreparing population..\n");
+        printf("* initializing\n");
         initialize();
+        printf("* analyzing\n");
         analyze();
+        printf("* sorting\n");
         sort();
         printf("Population prepared.\n");
 
@@ -172,14 +172,14 @@ int main()
         while(keep_going == 1)
         {
             //Main menu
-            printf("\n\n~~~~~~~Main Menu~~~~~~~\n");
+            printf("\n~~~~~~~Main Menu~~~~~~~\n");
             printf("Current parameters: size %d by %d, population of %d.\n", size, size, pop_size);
             printf("Would you like to\n1)view the current population\n2)select options for a run\n");
             printf("3)run the program with the default settings?\n");
             printf("4)choose a different square and population size?\n");
             printf("5)quit the program?\nSelection: ");
-            scanf("%d", &choice);
 
+            scanf("%d", &choice);
 
             printf("\n");
 
@@ -279,15 +279,12 @@ int main()
                 printf("Option invalid. Please choose again:\n");
             }
 
-
-
-
         }
 
         free_population();
     }
 
-    printf("\n\nGoodbye.\n\n");
+    printf("\nGoodbye.\n");
 
     return 0;
 }
@@ -325,22 +322,26 @@ int  malloc_population()
     if (population == NULL)
             return -1;
 
-
     for(i = 0; i < pop_size; i++)
     {
-        SQUARE(i) = malloc(size*sizeof(int));
-        if (SQUARE(i) == NULL)
-            return -1;
+        // zero out the fitness
+        population[i].fitness = 0.0;
 
+        // create the matrix
+        MATRIX(i) = malloc(size*sizeof(int*));
+        if (MATRIX(i) == NULL)
+            return -1;
 
         for(j = 0; j < size; j++)
         {
-            SQUARE(i)[j] = malloc(size*sizeof(int));
-            if (SQUARE(i)[j] == NULL)
+            MATRIX(i)[j] = malloc(size*sizeof(int));
+            if (MATRIX(i)[j] == NULL)
                 return -1;
 
+            // zero out the matrix
+            for(int x = 0; x < size; x++)
+              MATRIX(i)[j][x] = 0;
         }
-
     }
 
     return 0;
@@ -399,7 +400,7 @@ int run(int generations, int survivors, int loop)
             //and if the local counter (last_time) is less than g_timer, it prints info.
 
 
-            if(population[0].fitness != 0 && keypress != 'q3' && g_timer > last_time)
+            if(population[0].fitness != 0 && keypress != 'q' && g_timer > last_time)
             {
                 last_time = g_timer;
                 printf("\nGeneration %d, dynasty %d\n", g_generations, g_dynasty);
@@ -436,8 +437,7 @@ int run(int generations, int survivors, int loop)
 }
 
 
-
-void print_timer(void *arg)
+void *print_timer(void *arg)
 {
 pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS,NULL);
 
@@ -449,7 +449,7 @@ while(1)
 }
 
 
-return NULL;
+return 0;
 }
 
 
@@ -501,7 +501,7 @@ void sort()
 
 
 
-void mutate_protege(void *arg)
+void *mutate_protege(void *arg)
 {
     int i, r;
 
@@ -529,18 +529,18 @@ void mutate_protege(void *arg)
         do{
             r2_a = (rand_gen(w->seed))%size;
             r2_b = (rand_gen(w->seed))%size;
-        }while(SQUARE(i)[r2_a][r2_b] == SQUARE(i)[r1_a][r1_b]);
+        }while(MATRIX(i)[r2_a][r2_b] == MATRIX(i)[r1_a][r1_b]);
 
 
-        gene1 = SQUARE(i)[r1_a][r1_b];
-        gene2 = SQUARE(i)[r2_a][r2_b];
+        gene1 = MATRIX(i)[r1_a][r1_b];
+        gene2 = MATRIX(i)[r2_a][r2_b];
 
-        SQUARE(i)[r2_a][r2_b] = gene1;
-        SQUARE(i)[r1_a][r1_b] = gene2;
+        MATRIX(i)[r2_a][r2_b] = gene1;
+        MATRIX(i)[r1_a][r1_b] = gene2;
 
     }
 
-    return;
+    return 0;
 
 }
 
@@ -553,7 +553,6 @@ void mutate()
     pthread_create(&worker2, NULL, mutate_protege, &w2);
     pthread_create(&worker3, NULL, mutate_protege, &w3);
     pthread_create(&worker4, NULL, mutate_protege, &w4);
-
 
     //Waits for the threads to finish
     pthread_join(worker1, NULL);
@@ -606,7 +605,7 @@ void analyze()
 {
 //same general procedure at the mutate function, except assinging a different function for the threads
 
-pthread_create(&worker1, NULL, analyze_protege , &w1);
+pthread_create(&worker1, NULL, analyze_protege, &w1);
 pthread_create(&worker2, NULL, analyze_protege, &w2);
 pthread_create(&worker3, NULL, analyze_protege, &w3);
 pthread_create(&worker4, NULL, analyze_protege, &w4);
@@ -620,7 +619,7 @@ pthread_join(worker4, NULL);
 
 }
 
-void analyze_protege(void *arg)
+void *analyze_protege(void *arg)
 {
 
     //calculates the variance for all the sums in the squares, then assigns
@@ -650,11 +649,10 @@ void analyze_protege(void *arg)
 
         for(j = 0; j < size; j++)
         {
-            data[i]+= SQUARE(x)[i][j];
+            data[i]+= MATRIX(x)[i][j];
         }
 
     }
-
 
     for(z = 0; z < size; z++)
     {
@@ -662,29 +660,26 @@ void analyze_protege(void *arg)
 
         for(j = 0; j < size; j++)
         {
-            data[i]+= SQUARE(x)[j][z];
+            data[i]+= MATRIX(x)[j][z];
 
         }
         i++;
     }
 
-
     data[i] = 0;
 
     for(j = 0; j < size; j++)
     {
-        data[i]+= SQUARE(x)[j][j];
+        data[i]+= MATRIX(x)[j][j];
     }
-
 
     i++;
     data[i] = 0;
 
     for(j = 0; j < size; j++)
     {
-        data[i]+= SQUARE(x)[(size-1)-j][j];
+        data[i]+= MATRIX(x)[(size-1)-j][j];
     }
-
 
     int total = 0;
 
@@ -693,11 +688,8 @@ void analyze_protege(void *arg)
           total = total + data[i];
       }
 
-
     double average = (double)total/(double)(size*2+2);
-
     double variance = 0;
-
 
      for(i = 0; i < (size*2+2); i++)
       {
@@ -706,17 +698,13 @@ void analyze_protege(void *arg)
         variance += dif*dif;
       }
 
-
-
     population[x].fitness = variance;
-
 
     }
 
-
     free(data);
 
-    return;
+    return 0;
 }
 
 void log_file(m_square square)
@@ -777,37 +765,32 @@ void log_file(m_square square)
 
 void initialize()
 {
-
-    //Dispaches the threads, with their various argument-structures
+    // Dispatches the threads, with their various argument-structures
 
     pthread_create(&worker1, NULL, initialize_protege, &w1);
     pthread_create(&worker2, NULL, initialize_protege, &w2);
     pthread_create(&worker3, NULL, initialize_protege, &w3);
     pthread_create(&worker4, NULL, initialize_protege, &w4);
 
-
-    //Waits for the threads to finish
+    // Waits for the threads to finish
     pthread_join(worker1, NULL);
     pthread_join(worker2, NULL);
     pthread_join(worker3, NULL);
     pthread_join(worker4, NULL);
 
-return;
-
+    return;
 }
 
-void initialize_protege(void *arg)
+void *initialize_protege(void *arg)
 {
 
     /*Uses a Fisher–Yates shuffle to create a random, distinct numbers in the square
     Treats the square as an array.*/
 
-
     args *w = (args*)arg;
 
     int start = w->start;
     int finish = w->finish;
-
 
     int max = size*size;
     int i, j;
@@ -815,28 +798,25 @@ void initialize_protege(void *arg)
 
     for(i = start; i < finish; i++)
     {
-
         population[i].fitness = -1;
 
-        for(j = 0; j < max; j++)
-            SQUARE(i)[(int)floor(j/size)][j%size] = j+1;
+        for(j = 0; j < max; j++) {
+            MATRIX(i)[(int)floor(j/size)][j%size] = j+1;
+        }
 
         for(j = max-1; j > 0; j--)
         {
             r = (rand_gen(w->seed)%(j+1));
 
-            x = SQUARE(i)[(int)floor(r/size)][r%size];
+            x = MATRIX(i)[(int)floor(r/size)][r%size];
+            y = MATRIX(i)[(int)floor(j/size)][j%size];
 
-            x = SQUARE(i)[(int)floor(r/size)][r%size];
-            y = SQUARE(i)[(int)floor(j/size)][j%size];
-
-            SQUARE(i)[(int)floor(r/size)][r%size] = y;
-            SQUARE(i)[(int)floor(j/size)][j%size] = x;
+            MATRIX(i)[(int)floor(r/size)][r%size] = y;
+            MATRIX(i)[(int)floor(j/size)][j%size] = x;
         }
-
     }
 
-    return;
+    return 0;
 
 }
 
