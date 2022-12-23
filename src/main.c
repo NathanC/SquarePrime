@@ -1,5 +1,5 @@
 /*
-Nathan Coleman, Programing Languages Project 1
+Nathan, Programing Languages Project 1
 This program evolves n by n magic squares
 
 To use multi-core computational power, this computer
